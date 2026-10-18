@@ -201,9 +201,17 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px s
 
       <section class="panel" data-panel="gallery" hidden>
         <div class="card">
+          <h2>Slideshow</h2>
+          <label class="check"><input type="checkbox" id="g-enabled"> Turn on the photo slideshow</label>
+          <div class="fields">
+            <label class="field"><span>Show the schedule screen for (seconds)</span><input type="number" id="t-sched" min="5" max="86400"></label>
+            <label class="field"><span>Then show each photo for (seconds)</span><input type="number" id="g-default" min="1" max="3600"></label>
+          </div>
+          <p class="note" id="cycle-note"></p>
+        </div>
+        <div class="card">
           <h2>Photos</h2>
           <div class="fields">
-            <label class="field"><span>Show each photo for (seconds)</span><input type="number" id="g-default" min="1" max="3600"></label>
             <label class="field"><span>When the shape doesn't match</span><select id="g-fit"><option value="cover">Crop to fill</option><option value="contain">Fit inside, pad edges</option></select></label>
             <label class="field"><span>Padding color</span><input type="color" id="g-fill"></label>
           </div>
@@ -218,12 +226,11 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px s
 
       <section class="panel" data-panel="weather" hidden>
         <div class="card">
-          <h2>Rotation</h2>
+          <h2>Weather updates</h2>
           <div class="fields">
-            <label class="field"><span>Show main screen for (seconds)</span><input type="number" id="t-sched" min="5" max="86400"></label>
             <label class="field"><span>Refresh weather every (minutes)</span><input type="number" id="t-weather" min="5" max="240"></label>
           </div>
-          <p class="note" id="cycle-note"></p>
+          <p class="note">How long the schedule screen and each photo stay up is set in the Gallery tab.</p>
         </div>
         <div class="card">
           <h2>Time format</h2>
@@ -339,7 +346,7 @@ function exampleState() {
       { kind: "range", time: "16:00", end: "17:30", text: "Soccer practice", days: [1, 3] },
       { kind: "time", time: "10:00", text: "Farmers market", days: [5] },
     ] },
-    gallery: { images: [], defaultSeconds: 10, fit: "cover", fill: "#000000",
+    gallery: { enabled: true, images: [], defaultSeconds: 10, fit: "cover", fill: "#000000",
       overlay: { id: "overlay", type: "clock", name: "Clock over photos", x: 308, y: 206, align: "right", font: { family: "sans", size: 22, weight: 700 }, color: "#ffffff", visible: true, seconds: false } },
     timing: { scheduleSeconds: 60, weatherMinutes: 10 },
     weather: { zip: "19104", country: "US", units: "imperial" },
@@ -860,14 +867,14 @@ function renderLists() {
   // gallery
   const th = $("#thumbs"); th.innerHTML = "";
   S.gallery.images.forEach((im, i) => {
-    const secs = h("input", { type: "number", id: `gs-${im.id}`, min: 1, max: 3600, placeholder: String(S.gallery.defaultSeconds), value: im.seconds ?? "",
-      "aria-label": "Seconds for this photo", oninput: () => { im.seconds = secs.value === "" ? null : clamp(Math.round(Number(secs.value)) || 1, 1, 3600); changed("cycle"); updateCycle(); } });
+    const secs = h("input", { type: "number", id: `gs-${im.id}`, min: 1, max: 3600, value: im.seconds ?? S.gallery.defaultSeconds,
+      "aria-label": `Seconds to show ${im.name}`, oninput: () => { if (secs.value === "") return; im.seconds = clamp(Math.round(Number(secs.value)) || 1, 1, 3600); changed(); updateCycle(); } });
     const show = () => { galleryIndex = i; setView("gallery"); };
     const move = (d) => { const j = i + d; if (j < 0 || j >= S.gallery.images.length) return; const a = S.gallery.images; [a[i], a[j]] = [a[j], a[i]]; changed("list"); };
     th.append(h("div", { class: "thumb", "aria-current": String(view === "gallery" && galleryIndex === i) },
       h("img", { src: im.data, alt: im.name, onclick: show }),
       h("div", { class: "meta" }, h("b", {}, `${i + 1}. ${im.name}`),
-        h("div", { class: "acts" }, secs, h("span", { class: "status" }, "sec"),
+        h("div", { class: "acts" }, h("span", { class: "status" }, "Show for"), secs, h("span", { class: "status" }, "sec"),
           h("button", { class: "btn small", onclick: show }, "Preview"),
           h("button", { class: "btn small", "aria-label": "Move up", onclick: () => move(-1) }, "↑"),
           h("button", { class: "btn small", "aria-label": "Move down", onclick: () => move(1) }, "↓"),
@@ -876,12 +883,14 @@ function renderLists() {
   if (!S.gallery.images.length) th.append(h("p", { class: "note" }, "No photos. With no photos the PyPortal stays on the main screen."));
   updateCycle();
 }
+const activePhotos = () => (S.gallery.enabled ? S.gallery.images : []);
 function updateCycle() {
-  const n = S.gallery.images.length;
+  const n = activePhotos().length;
+  if (!S.gallery.enabled) { $("#cycle-note").textContent = "The slideshow is off, so the schedule screen stays up all the time. Your photos are kept here but left out of the export."; return; }
   const g = S.gallery.images.reduce((t, im) => t + (im.seconds ?? S.gallery.defaultSeconds), 0);
   $("#cycle-note").textContent = n
-    ? `One full cycle: main screen ${S.timing.scheduleSeconds}s, then ${n} photo${n > 1 ? "s" : ""} for ${g}s, ${S.timing.scheduleSeconds + g}s in all.`
-    : "No gallery photos, so the main screen stays up all the time.";
+    ? `One full cycle: schedule screen ${S.timing.scheduleSeconds}s, then ${n} photo${n > 1 ? "s" : ""} for ${g}s, ${S.timing.scheduleSeconds + g}s in all.`
+    : "No photos yet, so the schedule screen stays up all the time.";
 }
 
 /* ------------------------------------------------------------ view + play */
@@ -905,7 +914,7 @@ function stepPlay() {
   if (now >= playState.until) {
     if (playState.mode === "main") { playState.mode = "gallery"; playState.index = 0; }
     else playState.index++;
-    if (playState.mode === "gallery" && playState.index >= S.gallery.images.length) playState.mode = "main";
+    if (playState.mode === "gallery" && playState.index >= activePhotos().length) playState.mode = "main";
     const dur = playState.mode === "main" ? S.timing.scheduleSeconds : (S.gallery.images[playState.index].seconds ?? S.gallery.defaultSeconds);
     playState.start = now; playState.until = now + dur * 1000;
     render();
@@ -918,7 +927,8 @@ function stepPlay() {
 }
 $("#play").onclick = () => {
   if (playState) { playState = null; $("#play").textContent = "▶ Play rotation"; $("#progress").style.width = "0"; updateModeLabel(); render(); return; }
-  if (!S.gallery.images.length) { toast("Add photos in the Gallery tab to see the rotation."); }
+  if (!S.gallery.enabled) toast("The slideshow is off, so only the schedule screen shows.");
+  else if (!S.gallery.images.length) toast("Add photos in the Gallery tab to see the rotation.");
   const now = performance.now();
   playState = { mode: "main", index: 0, start: now, until: now + S.timing.scheduleSeconds * 1000 };
   $("#play").textContent = "■ Stop";
@@ -939,6 +949,7 @@ function bindStatic() {
   const bind = (sel, get, set, ev = "input") => { const e = $(sel); e[e.type === "checkbox" ? "checked" : "value"] = get(); e.addEventListener(ev, () => { set(e.type === "checkbox" ? e.checked : e.value); changed("list"); updateCycle(); }); };
   bind("#bg-color", () => S.background.color, (v) => S.background.color = v);
   bind("#brightness", () => String(S.brightness), (v) => S.brightness = Number(v), "change");
+  bind("#g-enabled", () => !!S.gallery.enabled, (v) => S.gallery.enabled = v, "change");
   bind("#g-default", () => S.gallery.defaultSeconds, (v) => S.gallery.defaultSeconds = clamp(Math.round(Number(v)) || 1, 1, 3600));
   bind("#g-fit", () => S.gallery.fit, (v) => S.gallery.fit = v, "change");
   bind("#g-fill", () => S.gallery.fill, (v) => S.gallery.fill = v);
@@ -1077,7 +1088,7 @@ function decodeNow(url) {
 const hexInt = (hex) => parseInt(hex.slice(1), 16);
 function usedFonts() {
   const list = S.elements.filter((e) => e.visible).map((e) => e.font);
-  if (S.gallery.images.length && S.gallery.overlay.visible) list.push(S.gallery.overlay.font);
+  if (activePhotos().length && S.gallery.overlay.visible) list.push(S.gallery.overlay.font);
   const m = new Map(); for (const f of list) m.set(fontKey(f), f); return [...m.values()];
 }
 function buildConfig() {
@@ -1100,7 +1111,8 @@ function buildConfig() {
     elements: elems,
     schedule: { entries: [...S.schedule.entries].filter((e) => e.days.length).map((e) => ({ kind: e.kind || "time", m: e.kind === "allday" ? 0 : toMin(e.time), end: e.kind === "range" ? toMin(e.end) : null, days: [...e.days].sort(), text: e.text })) },
     gallery: {
-      images: S.gallery.images.map((im, i) => ({ file: `photo${String(i + 1).padStart(2, "0")}.bmp`, name: im.name, seconds: im.seconds ?? S.gallery.defaultSeconds })),
+      enabled: !!S.gallery.enabled,
+      images: activePhotos().map((im, i) => ({ file: `photo${String(i + 1).padStart(2, "0")}.bmp`, name: im.name, seconds: im.seconds ?? S.gallery.defaultSeconds })),
       overlay: { visible: !!ov.visible, x: ov.x, y: ov.y, align: ov.align, font: fontName(ov.font), color: hexInt(ov.color), seconds: !!ov.seconds, hour24: t.hour24, ampm: t.ampm },
     },
     timing: { scheduleSeconds: S.timing.scheduleSeconds, weatherMinutes: S.timing.weatherMinutes },
@@ -1174,7 +1186,7 @@ async function buildFiles() {
   for (const f of fonts) { const n = fontName(f); fontFiles.push(n); files.push({ name: "fonts/" + n, data: toBDF(raster(f)) }); }
   let nImages = 0;
   if (S.background.image) { files.push({ name: "images/bg.bmp", data: bmp24(await decodeNow(S.background.image)) }); nImages++; }
-  for (const [i, im] of S.gallery.images.entries()) { files.push({ name: `images/photo${String(i + 1).padStart(2, "0")}.bmp`, data: bmp24(await decodeNow(im.data)) }); nImages++; }
+  for (const [i, im] of activePhotos().entries()) { files.push({ name: `images/photo${String(i + 1).padStart(2, "0")}.bmp`, data: bmp24(await decodeNow(im.data)) }); nImages++; }
   files.push({ name: "README.txt", data: readme(fontFiles, nImages) });
   return files;
 }
@@ -1185,7 +1197,7 @@ function refreshExport() {
   const rows = [["code.py", $("#codepy").textContent.length], ["config.json", JSON.stringify(buildConfig()).length * 1.1], ["settings.toml", 400]];
   for (const f of fonts) rows.push(["fonts/" + fontName(f), toBDF(raster(f)).length]);
   if (S.background.image) rows.push(["images/bg.bmp", 230454]);
-  S.gallery.images.forEach((im, i) => rows.push([`images/photo${String(i + 1).padStart(2, "0")}.bmp`, 230454]));
+  activePhotos().forEach((im, i) => rows.push([`images/photo${String(i + 1).padStart(2, "0")}.bmp`, 230454]));
   rows.push(["README.txt", 2600]);
   const total = rows.reduce((t, r) => t + r[1], 0) + 160 * 1024; // + libraries
   $("#file-list").textContent = rows.map(([n, s]) => n.padEnd(28) + kb(s).padStart(9)).join("\n") + "\n" + "lib/ (you add, see README)".padEnd(28) + "~160 KB".padStart(9);

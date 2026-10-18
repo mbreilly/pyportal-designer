@@ -12,8 +12,8 @@ Open `index.html` in any browser. It's a single file with no install and no serv
 | --- | --- |
 | Layout | Drag items on the screen; set font (12 choices), size, bold, color and alignment; background color or image; backlight. |
 | Schedule | Weekly entries, one line each: days, time, text, e.g. `MTWT 6:40am In DRL until 1:40pm`. Entries can be **At** a time, **From … to …**, or **All day**. Spans and all-day entries are highlighted while they're happening. Also sets the schedule's text and background colors. |
-| Gallery | Upload photos (resized to 320×240), set seconds per photo, optional clock over the photos. |
-| Clock & weather | How long the main screen shows before the slideshow, weather refresh rate, 12/24-hour time, weather colors, zip code and units. |
+| Gallery | Turn the slideshow on or off, set how long the schedule screen shows before it, upload photos (resized to 320×240) and set seconds per photo, optional clock over the photos. |
+| Clock & weather | Weather refresh rate, 12/24-hour time, weather colors, zip code and units. |
 | Export | Optional WiFi and OpenWeatherMap key (written only into the zip), drive-space estimate, **Export .zip**. |
 
 ## Put it on the PyPortal

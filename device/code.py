@@ -164,7 +164,7 @@ for el in CFG["elements"]:
         updated_labels.append((label, el))
 
 gallery_cfg = CFG["gallery"]
-gallery_images = gallery_cfg["images"]
+gallery_images = gallery_cfg["images"] if gallery_cfg.get("enabled", True) else []
 gallery_group = None
 if gallery_images:
     gallery_group = displayio.Group()
