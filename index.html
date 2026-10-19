@@ -318,6 +318,7 @@ import board
 import busio
 import displayio
 import rtc
+import terminalio
 import vectorio
 from digitalio import DigitalInOut
 from adafruit_bitmap_font import bitmap_font
@@ -344,7 +345,12 @@ _fonts = {}
 
 def get_font(name):
     if name not in _fonts:
-        _fonts[name] = bitmap_font.load_font("/fonts/" + name)
+        try:
+            _fonts[name] = bitmap_font.load_font("/fonts/" + name)
+        except OSError:
+            # A font file wasn't copied over: show the text in the built-in font instead of stopping.
+            print("Missing /fonts/" + name + ", using the built-in font. Copy the export's fonts folder to CIRCUITPY.")
+            _fonts[name] = terminalio.FONT
     return _fonts[name]
 
 
@@ -402,7 +408,7 @@ def make_label(el, text=""):
     font = get_font(el["font"])
     label = bitmap_label.Label(font, text=text, color=el["color"])
     label.anchor_point = (ANCHOR_X.get(el.get("align", "left"), 0.0), -1.0)
-    label.anchored_position = (el["x"], el["y"] + font.ascent)
+    label.anchored_position = (el["x"], el["y"] + getattr(font, "ascent", font.get_bounding_box()[1]))
     return label
 
 
