@@ -18,7 +18,7 @@ Open `index.html` in any browser. It's a single file with no install and no serv
 
 ## Put it on the PyPortal
 
-1. Install CircuitPython 9 or newer (10.x works): <https://circuitpython.org/board/pyportal/>. Check `boot_out.txt` on `CIRCUITPY` for the version; 7.x and 8.x are too old.
+1. Install CircuitPython 9 or newer, including 10.x: <https://circuitpython.org/board/pyportal/>. Check `boot_out.txt` on `CIRCUITPY` for the version; 7.x and 8.x are too old.
 2. Unzip the export and copy everything onto `CIRCUITPY`: `code.py`, `config.json`, `settings.toml`, `fonts/`, `images/`.
 3. Fill in `settings.toml`: `CIRCUITPY_WIFI_SSID`, `CIRCUITPY_WIFI_PASSWORD`, and `OPENWEATHER_KEY` (free at <https://openweathermap.org/api>, Current Weather Data).
 4. Add these libraries to `CIRCUITPY/lib` from the library bundle that matches your CircuitPython version (e.g. "Bundle for Version 10.x"), or run
