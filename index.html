@@ -745,7 +745,7 @@ const TYPE_LABEL = { clock: "clock", date: "date", temp: "weather", updated: "up
 /* ------------------------------------------------------------ state */
 function exampleState() {
   return {
-    v: 4,
+    v: 5,
     previewDay: "",
     brightness: 1,
     background: { color: "#0e2238", image: null, imageName: "" },
@@ -755,7 +755,8 @@ function exampleState() {
       { id: "date", type: "date", name: "Date", x: 14, y: 60, align: "left", font: { family: "sans", size: 15, weight: 400 }, color: "#9fc3e8", visible: true, format: "{weekday}, {month} {day}" },
       { id: "temp", type: "temp", name: "Temperature", x: 308, y: 12, align: "right", font: { family: "Oswald", size: 30, weight: 700 }, color: "#ffc857", visible: true, format: "{temp}{unit}" },
       { id: "cond", type: "temp", name: "Conditions", x: 308, y: 52, align: "right", font: { family: "sans", size: 13, weight: 400 }, color: "#9fc3e8", visible: true, format: "{desc}" },
-      { id: "sched", type: "schedule", name: "Schedule", x: 14, y: 92, align: "left", font: { family: "sans", size: 15, weight: 400 }, color: "#e8eef5", visible: true,
+      { id: "heading", type: "text", name: "Schedule heading", x: 14, y: 81, align: "left", font: { family: "sans", size: 13, weight: 700 }, color: "#7fb2e5", visible: true, text: "My week" },
+      { id: "sched", type: "schedule", name: "Schedule", x: 14, y: 104, align: "left", font: { family: "sans", size: 15, weight: 400 }, color: "#e8eef5", visible: true,
         timeColor: "#7fb2e5", highlightColor: "#ffc857", rows: 5, rowGap: 5, daysWidth: 60, timeWidth: 128, width: 292, box: true, boxColor: "#16314f", boxPad: 5, highlight: true },
       { id: "email", type: "text", name: "Email", x: 12, y: 222, align: "left", font: { family: "sans", size: 12, weight: 400 }, color: "#9fc3e8", visible: true, text: "email : mbreilly@hep.upenn.edu" },
       { id: "updated", type: "updated", name: "Last updated", x: 308, y: 222, align: "right", font: { family: "sans", size: 12, weight: 400 }, color: "#6e8ba8", visible: true, format: "Updated {time}", pending: "Updating..." },
@@ -1446,6 +1447,13 @@ function merge(base, data) {
     out.elements = out.elements.filter((e) => !(e.id === "head" || (e.type === "text" && /^(today|this week)$/i.test((e.text || "").trim()))));
     if (!out.elements.some((e) => e.id === "email")) out.elements.splice(Math.max(0, out.elements.findIndex((e) => e.type === "updated")), 0, base.elements.find((e) => e.id === "email"));
     out.v = 4;
+  }
+  if (out.v < 5) {
+    // v5: editable heading above the schedule; nudge an unmoved schedule down to make room.
+    const sc = out.elements.find((e) => e.type === "schedule");
+    if (!out.elements.some((e) => e.id === "heading")) out.elements.splice(Math.max(0, out.elements.indexOf(sc)), 0, base.elements.find((e) => e.id === "heading"));
+    if (sc && sc.y === 92) sc.y = 104;
+    out.v = 5;
   }
   out.previewDay = "";
   return out;
