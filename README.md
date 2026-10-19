@@ -18,10 +18,10 @@ Open `index.html` in any browser. It's a single file with no install and no serv
 
 ## Put it on the PyPortal
 
-1. Install CircuitPython 9.x: <https://circuitpython.org/board/pyportal/>
+1. Install CircuitPython 9 or newer (10.x works): <https://circuitpython.org/board/pyportal/>. Check `boot_out.txt` on `CIRCUITPY` for the version; 7.x and 8.x are too old.
 2. Unzip the export and copy everything onto `CIRCUITPY`: `code.py`, `config.json`, `settings.toml`, `fonts/`, `images/`.
 3. Fill in `settings.toml`: `CIRCUITPY_WIFI_SSID`, `CIRCUITPY_WIFI_PASSWORD`, and `OPENWEATHER_KEY` (free at <https://openweathermap.org/api>, Current Weather Data).
-4. Add these libraries to `CIRCUITPY/lib` from the CircuitPython 9.x bundle, or run
+4. Add these libraries to `CIRCUITPY/lib` from the library bundle that matches your CircuitPython version (e.g. "Bundle for Version 10.x"), or run
    `circup install adafruit_esp32spi adafruit_requests adafruit_connection_manager adafruit_display_text adafruit_bitmap_font`
 
 The clock is set from the weather request using the zip code's time zone, so it's correct once WiFi connects. After a design change, copying the new `config.json` is enough unless fonts or photos changed.
