@@ -193,7 +193,7 @@ UNITS = CFG["weather"].get("units", "imperial")
 
 esp = None
 requests = None
-if SSID and OWM_KEY:
+if SSID:
     from adafruit_esp32spi import adafruit_esp32spi
     import adafruit_connection_manager
     import adafruit_requests
@@ -207,7 +207,9 @@ if SSID and OWM_KEY:
     ssl_context = adafruit_connection_manager.get_radio_ssl_context(esp)
     requests = adafruit_requests.Session(pool, ssl_context)
 else:
-    print("No WiFi or OPENWEATHER_KEY in settings.toml: running offline")
+    print("No WiFi in settings.toml: running offline")
+if SSID and not OWM_KEY:
+    print("No OPENWEATHER_KEY in settings.toml: weather is off")
 
 
 def wifi_ok():
@@ -287,6 +289,72 @@ def fetch_weather():
 DAY_LETTERS = "MTWTFSS"
 SCHEDULE = [e for e in CFG["schedule"]["entries"] if e.get("days")]
 
+# Or the schedule is read from a plain-text file on the web, one screen line per
+# text line. "|" or a tab splits a line into the days, time and text columns.
+SCHEDULE_FROM_URL = CFG["schedule"].get("source") == "url"
+SCHEDULE_URL = (CFG["schedule"].get("url") or "").strip() if SCHEDULE_FROM_URL else ""
+SCHEDULE_REFRESH = max(1, int(CFG["schedule"].get("refreshMinutes", 15))) * 60
+SCHEDULE_MAX_BYTES = 4096
+url_lines = None  # rows from the last good read
+url_error = bool(SCHEDULE_URL) and requests is None
+SWAPS = (("\u2018", "'"), ("\u2019", "'"), ("\u201c", '"'), ("\u201d", '"'),
+         ("\u2013", "-"), ("\u2014", "-"), ("\u2026", "..."), ("\u00a0", " "), ("\t", "|"))
+
+
+def clean_text(text):
+    # Swap typographic punctuation for plain characters and drop anything the
+    # exported fonts don't have (they hold printable ASCII and the degree sign).
+    for old, new in SWAPS:
+        text = text.replace(old, new)
+    return "".join(ch for ch in text if 32 <= ord(ch) < 127 or ord(ch) == 176)
+
+
+def parse_schedule_text(text):
+    # Mirrors parseScheduleText() in the designer.
+    rows = []
+    for raw in text.replace("\ufeff", "").split("\n"):
+        line = clean_text(raw).strip()
+        if not line or line[0] == "#":
+            continue
+        hot = line[0] == "!"
+        if hot:
+            line = line[1:].strip()
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) >= 3:
+            rows.append((parts[0], parts[1], " ".join(p for p in parts[2:] if p), hot, "cols3"))
+        elif len(parts) == 2:
+            rows.append((parts[0], "", parts[1], hot, "cols2"))
+        else:
+            rows.append(("", "", parts[0], hot, "cols1"))
+    return rows
+
+
+def fetch_schedule():
+    global url_lines, url_error
+    response = requests.get(SCHEDULE_URL, timeout=20)
+    data = b""
+    try:
+        if response.status_code != 200:
+            raise RuntimeError("HTTP %d from the schedule address" % response.status_code)
+        for chunk in response.iter_content(chunk_size=512):
+            data += chunk
+            if len(data) >= SCHEDULE_MAX_BYTES:
+                break
+    finally:
+        response.close()
+    data = data[:SCHEDULE_MAX_BYTES]
+    text = None
+    for cut in range(4):  # the size limit may split a multi-byte character
+        try:
+            text = data[:len(data) - cut].decode("utf-8")
+            break
+        except (UnicodeError, ValueError):
+            pass
+    if text is None:
+        raise RuntimeError("the schedule address didn't return plain text")
+    url_lines = parse_schedule_text(text)
+    url_error = False
+
 
 def short_time(minute, hour24=False):
     hour, minute = (minute // 60) % 24, minute % 60
@@ -319,7 +387,14 @@ def update_clock(now):
 
 
 def schedule_lines(el, now):
-    # [(days, time, text, happening_now)] for the first el["rows"] entries.
+    # [(days, time, text, happening_now, layout)] for the first el["rows"] lines.
+    if SCHEDULE_FROM_URL:
+        if not SCHEDULE_URL:
+            return [("", "", "No schedule web address set", False, "cols1")]
+        if url_lines is None:
+            message = "Couldn't load the schedule" if url_error else "Loading schedule..."
+            return [("", "", message, False, "cols1")]
+        return url_lines[:el["rows"]]
     wday = now.tm_wday
     now_min = now.tm_hour * 60 + now.tm_min
     h24 = el.get("hour24", False)
@@ -339,7 +414,7 @@ def schedule_lines(el, now):
                     hot = start <= now_min < end
                 else:  # runs past midnight
                     hot = now_min >= start or now_min < end
-        lines.append((days, when, what, hot))
+        lines.append((days, when, what, hot, "manual"))
     return lines
 
 
@@ -350,13 +425,28 @@ def update_schedule(now):
         max_text = el["width"] - el["timeWidth"]
         for i, (days_label, time_label, text_label) in enumerate(rows):
             if i < len(lines):
-                days, when, what, is_now = lines[i]
-                hot = el.get("highlight") and is_now
-                set_text(days_label, days)
-                set_text(time_label, when)
-                set_text(text_label, fit_text(font, what, max_text))
+                days, when, what, is_now, layout = lines[i]
+                # Lines marked "!" in a schedule file always use the highlight color.
+                hot = is_now and (layout != "manual" or el.get("highlight"))
+                text_color = el["highlightColor"] if hot else el["color"]
                 days_label.color = time_label.color = el["highlightColor"] if hot else el["timeColor"]
-                text_label.color = el["highlightColor"] if hot else el["color"]
+                text_label.color = text_color
+                if layout == "cols1":  # one part: the whole line, across all columns
+                    set_text(days_label, fit_text(font, what, el["width"]))
+                    days_label.color = text_color
+                    set_text(time_label, "")
+                    set_text(text_label, "")
+                    continue
+                if layout == "cols2":  # two parts: label under days and time, then text
+                    set_text(days_label, fit_text(font, days, el["timeWidth"] - 4))
+                    set_text(time_label, "")
+                elif layout == "cols3":
+                    set_text(days_label, fit_text(font, days, el.get("daysWidth", 0) - 4))
+                    set_text(time_label, fit_text(font, when, el["timeWidth"] - el.get("daysWidth", 0) - 4))
+                else:
+                    set_text(days_label, days)
+                    set_text(time_label, when)
+                set_text(text_label, fit_text(font, what, max_text))
             else:
                 for label in (days_label, time_label, text_label):
                     set_text(label, "")
@@ -369,6 +459,7 @@ mode = "schedule"
 mode_until = time.monotonic() + SCHEDULE_SECONDS
 image_index = 0
 next_weather = 0
+next_schedule = 0
 last_second = -1
 last_minute = -1
 
@@ -377,7 +468,7 @@ update_weather_labels()
 while True:
     now_mono = time.monotonic()
 
-    if requests and now_mono >= next_weather:
+    if requests and OWM_KEY and now_mono >= next_weather:
         next_weather = now_mono + WEATHER_SECONDS
         try:
             if wifi_ok():
@@ -386,6 +477,20 @@ while True:
             print("Weather update failed:", err)
             next_weather = now_mono + 60  # try again in a minute
         update_weather_labels()
+        last_minute = -1
+        gc.collect()
+        now_mono = time.monotonic()
+
+    if requests and SCHEDULE_URL and now_mono >= next_schedule:
+        next_schedule = now_mono + SCHEDULE_REFRESH
+        try:
+            if not wifi_ok():
+                raise RuntimeError("no WiFi")
+            fetch_schedule()
+        except Exception as err:  # pylint: disable=broad-except
+            print("Schedule update failed:", err)
+            url_error = True  # keeps showing the last schedule it read, if any
+            next_schedule = now_mono + 60  # try again in a minute
         last_minute = -1
         gc.collect()
         now_mono = time.monotonic()

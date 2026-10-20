@@ -1,0 +1,11 @@
+# Sample schedule for "Read it from a web address" in the Schedule tab.
+# One screen line per text line. | or a tab splits a line into columns:
+#   days | time | text      e.g. MTWT | 6:40am | In DRL until 1:40pm
+#   label | text            the label spans the days and time columns
+#   text                    one line across the whole width
+# Start a line with ! to show it in the happening-now color. Lines starting with # are left out.
+MTWT | 6:40am | In DRL until 1:40pm
+F | All day | Work from home
+Sa | 10:00am | Farmers market
+Next week | Conference in Chicago
+!Office closed Nov 26 and 27

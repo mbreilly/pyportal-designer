@@ -81,7 +81,7 @@ section.panel { display: grid; gap: 14px; }
 .field.wide { grid-column: 1 / -1; }
 .field > span { font-size: 12px; color: var(--muted); }
 .check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-input[type=text], input[type=number], input[type=password], input[type=time], select {
+input[type=text], input[type=url], input[type=number], input[type=password], input[type=time], select, textarea {
   width: 100%; min-width: 0; font: 14px var(--f-body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
 input[type=number] { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
 input[type=color] { width: 100%; height: 34px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); padding: 2px; }
@@ -102,6 +102,9 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px s
 .sched-row input[type=time] { width: 132px; }
 .sched-row .what { flex: 1 1 160px; min-width: 0; }
 .sched-row .to { color: var(--muted); font-size: 13px; }
+textarea { resize: vertical; font: 13px/1.5 var(--f-mono); }
+.src-url { display: grid; gap: 12px; }
+.src-url code { font: 12px var(--f-mono); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 .days { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .days button { min-width: 38px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); border-radius: 6px; padding: 4px 6px; font: 500 12px var(--f-mono); cursor: pointer; }
 .days button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
@@ -188,10 +191,28 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px s
 
       <section class="panel" data-panel="schedule" hidden>
         <div class="card">
+          <h2>Where the schedule comes from</h2>
+          <div class="seg" role="group" aria-label="Where the schedule comes from">
+            <button type="button" id="src-manual" aria-pressed="true">Type it in here</button>
+            <button type="button" id="src-url" aria-pressed="false">Read it from a web address</button>
+          </div>
+          <div class="src-url" id="src-url-fields" hidden>
+            <p class="note">The PyPortal reads a plain-text file from this address and shows one line on the screen for each line of text. Change the file and the screen follows at the next check, with no new export.</p>
+            <div class="fields">
+              <label class="field wide"><span>Web address of the text file</span><input type="url" id="s-url" placeholder="https://raw.githubusercontent.com/you/repo/main/schedule.txt" spellcheck="false" autocomplete="off"></label>
+              <label class="field"><span>Check for changes every (minutes)</span><input type="number" id="s-refresh" min="1" max="1440"></label>
+            </div>
+            <p class="note">Split a line into the same columns as typed entries with <code>|</code> or a tab, e.g. <code>MTWT | 6:40am | In DRL until 1:40pm</code>. A line with two parts puts the first under the days and times; a line with no <code>|</code> runs across the whole width. Start a line with <code>!</code> to show it in the happening-now color, or <code>#</code> to leave it out.</p>
+            <label class="field"><span>Preview text: what the address returns</span><textarea id="s-preview" rows="7" spellcheck="false"></textarea></label>
+            <div class="toolbar"><button type="button" class="btn small" id="s-fetch">Load the preview from the address</button><span class="status" id="s-fetch-status"></span></div>
+            <p class="note">Until its first read the PyPortal shows “Loading schedule...”. If a later read fails it keeps the last schedule it got. It reads up to 4 KB.</p>
+          </div>
+        </div>
+        <div class="card">
           <h2>Schedule colors</h2>
           <div id="sched-colors"></div>
         </div>
-        <div class="card">
+        <div class="card" id="sched-entries-card">
           <h2>Schedule entries <span class="toolbar"><button class="btn small" id="sched-sort">Sort by time</button><button class="btn small" id="sched-add">+ Entry</button></span></h2>
           <p class="note">Each entry is one line on the screen, in this order: its days, its time, then what it is, for example “MTWT 6:40am In DRL until 1:40pm” or “F All day Work from home”. Entries that span a window or last all day light up while they're happening. Use ↑ ↓ to set the order.</p>
           <label class="field" style="max-width:260px"><span>Preview the screen as if it's</span><select id="preview-day"></select></label>
@@ -323,6 +344,13 @@ const CODES = []; for (let c = 32; c < 127; c++) CODES.push(c); CODES.push(176);
 const TYPE_LABEL = { clock: "clock", date: "date", temp: "weather", updated: "updated", schedule: "schedule", text: "text" };
 
 /* ------------------------------------------------------------ state */
+const SAMPLE_SCHEDULE_TEXT = `# Lines starting with # are left out
+MTWT | 6:40am | In DRL until 1:40pm
+F | All day | Work from home
+Sa | 10:00am | Farmers market
+Next week | Conference in Chicago
+!Office closed Nov 26 and 27
+`;
 function exampleState() {
   return {
     v: 5,
@@ -341,7 +369,7 @@ function exampleState() {
       { id: "email", type: "text", name: "Email", x: 12, y: 222, align: "left", font: { family: "sans", size: 12, weight: 400 }, color: "#9fc3e8", visible: true, text: "email : mbreilly@hep.upenn.edu" },
       { id: "updated", type: "updated", name: "Last updated", x: 308, y: 222, align: "right", font: { family: "sans", size: 12, weight: 400 }, color: "#6e8ba8", visible: true, format: "Updated {time}", pending: "Updating..." },
     ],
-    schedule: { entries: [
+    schedule: { source: "manual", url: "", refreshMinutes: 15, previewText: SAMPLE_SCHEDULE_TEXT, entries: [
       { kind: "range", time: "06:40", end: "13:40", text: "In DRL", days: [0, 1, 2, 3] },
       { kind: "allday", time: "00:00", text: "Work from home", days: [4] },
       { kind: "range", time: "16:00", end: "17:30", text: "Soccer practice", days: [1, 3] },
@@ -582,8 +610,35 @@ function shortTime(min, h24) {
   const h = Math.floor(min / 60) % 24, m = min % 60;
   return h24 ? `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}` : `${(h % 12) || 12}:${String(m).padStart(2, "0")}${h < 12 ? "am" : "pm"}`;
 }
+// Mirrors clean_text() and parse_schedule_text() in code.py: a schedule read from a web address.
+const SWAPS = [["\u2018", "'"], ["\u2019", "'"], ["\u201c", '"'], ["\u201d", '"'], ["\u2013", "-"], ["\u2014", "-"], ["\u2026", "..."], ["\u00a0", " "], ["\t", "|"]];
+function cleanText(text) {
+  for (const [a, b] of SWAPS) text = text.split(a).join(b);
+  let out = ""; for (const ch of text) { const c = ch.codePointAt(0); if ((c >= 32 && c < 127) || c === 176) out += ch; }
+  return out;
+}
+function parseScheduleText(text) {
+  const rows = [];
+  for (const raw of text.split("\ufeff").join("").split("\n")) {
+    let line = cleanText(raw).trim();
+    if (!line || line[0] === "#") continue;
+    const hot = line[0] === "!";
+    if (hot) line = line.slice(1).trim();
+    const parts = line.split("|").map((p) => p.trim());
+    if (parts.length >= 3) rows.push({ days: parts[0], when: parts[1], what: parts.slice(2).filter(Boolean).join(" "), hot, layout: "cols3" });
+    else if (parts.length === 2) rows.push({ days: parts[0], when: "", what: parts[1], hot, layout: "cols2" });
+    else rows.push({ days: "", when: "", what: parts[0], hot, layout: "cols1" });
+  }
+  return rows;
+}
 // One line per entry: days, time, text. Spans and all-day entries light up while they're happening.
 function scheduleLines(el, now) {
+  if (S.schedule.source === "url") {
+    const msg = (what) => [{ days: "", when: "", what, hot: false, layout: "cols1" }];
+    if (!S.schedule.url.trim()) return msg("No schedule web address set");
+    if (!S.schedule.previewText.trim()) return msg("Loading schedule...");
+    return parseScheduleText(S.schedule.previewText).slice(0, el.rows);
+  }
   const wday = (now.getDay() + 6) % 7, nm = now.getHours() * 60 + now.getMinutes(), h24 = S.time.hour24;
   return S.schedule.entries.filter((e) => e.days && e.days.length).slice(0, el.rows).map((e) => {
     const kind = e.kind || "time", start = toMin(e.time), end = toMin(e.end);
@@ -592,7 +647,7 @@ function scheduleLines(el, now) {
     const what = kind === "range" ? `${e.text} until ${shortTime(end, h24)}` : e.text;
     const today = e.days.includes(wday);
     const hot = today && (kind === "allday" || (kind === "range" && (end > start ? start <= nm && nm < end : nm >= start || nm < end)));
-    return { days, when, what, hot };
+    return { days, when, what, hot, layout: "manual" };
   });
 }
 function drawElement(buf, el, now) {
@@ -600,11 +655,21 @@ function drawElement(buf, el, now) {
     const bh = boxHeight(el), pad = Number(el.boxPad || 0);
     if (el.box) fillRect(buf, el.x - pad, el.y - pad, el.width + 2 * pad, bh + 2 * pad, rgb565(el.boxColor));
     const r = raster(el.font), rh = rowHeight(el);
+    const dw = Number(el.daysWidth), tw = Number(el.timeWidth);
     scheduleLines(el, previewNow(now)).forEach((e, i) => {
-      const hot = el.highlight && e.hot, y = el.y + i * rh;
-      drawText(buf, el.font, e.days, el.x, y, "left", rgb565(hot ? el.highlightColor : el.timeColor));
-      drawText(buf, el.font, e.when, el.x + Number(el.daysWidth), y, "left", rgb565(hot ? el.highlightColor : el.timeColor));
-      drawText(buf, el.font, fitText(r, e.what, el.width - el.timeWidth), el.x + Number(el.timeWidth), y, "left", rgb565(hot ? el.highlightColor : el.color));
+      // Lines marked "!" in a schedule file always use the highlight color.
+      const hot = e.hot && (e.layout !== "manual" || el.highlight), y = el.y + i * rh;
+      const tc = rgb565(hot ? el.highlightColor : el.timeColor), xc = rgb565(hot ? el.highlightColor : el.color);
+      if (e.layout === "cols1") { drawText(buf, el.font, fitText(r, e.what, el.width), el.x, y, "left", xc); return; }
+      if (e.layout === "cols2") drawText(buf, el.font, fitText(r, e.days, tw - 4), el.x, y, "left", tc);
+      else if (e.layout === "cols3") {
+        drawText(buf, el.font, fitText(r, e.days, dw - 4), el.x, y, "left", tc);
+        drawText(buf, el.font, fitText(r, e.when, tw - dw - 4), el.x + dw, y, "left", tc);
+      } else {
+        drawText(buf, el.font, e.days, el.x, y, "left", tc);
+        drawText(buf, el.font, e.when, el.x + dw, y, "left", tc);
+      }
+      drawText(buf, el.font, fitText(r, e.what, el.width - tw), el.x + tw, y, "left", xc);
     });
     return { x: el.x, y: el.y, w: el.width, h: Math.max(bh, 6) };
   }
@@ -863,6 +928,7 @@ function renderLists() {
         h("button", { class: "btn small danger", "aria-label": "Remove entry", onclick: () => { S.schedule.entries.splice(i, 1); changed("list"); } }, "Remove")), warn));
   });
   if (!S.schedule.entries.length) sl.append(h("p", { class: "note" }, "No entries yet. Add one with + Entry."));
+  syncSource();
   const sch = S.elements.find((e) => e.type === "schedule"), shown = S.schedule.entries.filter((e) => e.days.length).length;
   if (sch && shown > sch.rows) sl.append(h("p", { class: "note" }, `The screen shows ${sch.rows} lines, so the last ${shown - sch.rows} entr${shown - sch.rows === 1 ? "y is" : "ies are"} hidden. Raise “Rows shown” under Layout → Schedule or use a smaller font.`));
   // gallery
@@ -955,6 +1021,12 @@ function bindStatic() {
   bind("#g-fit", () => S.gallery.fit, (v) => S.gallery.fit = v, "change");
   bind("#g-fill", () => S.gallery.fill, (v) => S.gallery.fill = v);
   bind("#t-sched", () => S.timing.scheduleSeconds, (v) => S.timing.scheduleSeconds = clamp(Math.round(Number(v)) || 5, 5, 86400));
+  bind("#s-url", () => S.schedule.url, (v) => S.schedule.url = v.trim());
+  bind("#s-refresh", () => S.schedule.refreshMinutes, (v) => S.schedule.refreshMinutes = clamp(Math.round(Number(v)) || 15, 1, 1440));
+  bind("#s-preview", () => S.schedule.previewText, (v) => S.schedule.previewText = v);
+  $("#src-manual").onclick = () => { S.schedule.source = "manual"; setView("main"); changed("list"); };
+  $("#src-url").onclick = () => { S.schedule.source = "url"; setView("main"); changed("list"); };
+  syncSource();
   bind("#t-weather", () => S.timing.weatherMinutes, (v) => S.timing.weatherMinutes = clamp(Math.round(Number(v)) || 10, 5, 240));
   bind("#h24", () => S.time.hour24, (v) => S.time.hour24 = v, "change");
   bind("#ampm", () => S.time.ampm, (v) => S.time.ampm = v, "change");
@@ -981,6 +1053,36 @@ $("#add-text").onclick = () => {
   const id = "t" + Date.now().toString(36);
   S.elements.push({ id, type: "text", name: "Text label", x: 160, y: 110, align: "center", font: { family: "sans", size: 18, weight: 400 }, color: "#ffffff", visible: true, text: "Hello" });
   select(id); changed("all");
+};
+let fetchNote = "";
+function syncSource() {
+  const url = S.schedule.source === "url";
+  $("#src-manual").setAttribute("aria-pressed", String(!url));
+  $("#src-url").setAttribute("aria-pressed", String(url));
+  $("#src-url-fields").hidden = !url;
+  $("#sched-entries-card").hidden = url;
+  if (!url) return;
+  const sch = S.elements.find((e) => e.type === "schedule"), n = parseScheduleText(S.schedule.previewText).length;
+  let note = fetchNote;
+  if (!note && !S.schedule.url) note = "Add the web address the PyPortal should read.";
+  else if (!note && sch && n > sch.rows) note = `The preview has ${n} lines and the screen shows ${sch.rows}, so the last ${n - sch.rows} won't show. Raise “Rows shown” under Layout → Schedule or use a smaller font.`;
+  $("#s-fetch-status").textContent = note;
+}
+$("#s-fetch").onclick = async () => {
+  const url = S.schedule.url, say = (t) => { fetchNote = t; syncSource(); };
+  if (!/^https?:\/\//i.test(url)) { say("Enter an address that starts with https:// or http://."); return; }
+  say("Loading...");
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = (await res.text()).slice(0, 4096);
+    S.schedule.previewText = text; $("#s-preview").value = text;
+    fetchNote = "Loaded. The preview now shows what the PyPortal will show.";
+    changed("list");
+  } catch (e) {
+    say("The designer can't read that address from here, since the browser blocks it. Paste the file's text into the preview box instead. The PyPortal reads the address itself.");
+  }
+  setTimeout(() => { fetchNote = ""; syncSource(); }, 10000);
 };
 $("#sched-add").onclick = () => { S.schedule.entries.push({ kind: "time", time: "12:00", text: "New entry", days: [(new Date().getDay() + 6) % 7] }); changed("list"); const last = document.querySelector(`#se-x-${S.schedule.entries.length - 1}`); last?.focus(); last?.select(); };
 $("#sched-sort").onclick = () => { const key = (e) => (e.kind === "allday" ? -1 : toMin(e.time)); S.schedule.entries.sort((a, b) => key(a) - key(b)); changed("list"); };
@@ -1117,7 +1219,7 @@ function buildConfig() {
     brightness: S.brightness,
     background: { color: hexInt(S.background.color), image: S.background.image ? "bg.bmp" : null },
     elements: elems,
-    schedule: { entries: [...S.schedule.entries].filter((e) => e.days.length).map((e) => ({ kind: e.kind || "time", m: e.kind === "allday" ? 0 : toMin(e.time), end: e.kind === "range" ? toMin(e.end) : null, days: [...e.days].sort(), text: e.text })) },
+    schedule: { source: S.schedule.source === "url" ? "url" : "manual", url: S.schedule.source === "url" ? S.schedule.url : "", refreshMinutes: S.schedule.refreshMinutes, entries: [...S.schedule.entries].filter((e) => e.days.length).map((e) => ({ kind: e.kind || "time", m: e.kind === "allday" ? 0 : toMin(e.time), end: e.kind === "range" ? toMin(e.end) : null, days: [...e.days].sort(), text: e.text })) },
     gallery: {
       enabled: !!S.gallery.enabled,
       images: activePhotos().map((im, i) => ({ file: `photo${String(i + 1).padStart(2, "0")}.bmp`, name: im.name, seconds: im.seconds ?? S.gallery.defaultSeconds })),
@@ -1152,7 +1254,7 @@ Made with PyPortal Display Designer. Exported ${new Date().toLocaleString()}.
 
 2. Copy everything in this folder onto the CIRCUITPY drive:
      code.py         the program
-     config.json     your layout, colors, weekly schedule and timing
+     config.json     your layout, colors, weekly schedule (or its web address) and timing
      settings.toml   WiFi name/password and OpenWeatherMap key
      fonts/          ${fontFiles.length} bitmap font${fontFiles.length === 1 ? "" : "s"} made from your design
      images/         ${nImages} picture${nImages === 1 ? "" : "s"} (320x240, 24-bit BMP)
@@ -1180,7 +1282,12 @@ screen still runs, but the clock starts at midnight and weather shows "--".
 Changing the design later: edit it in the designer and export again. If only
 the schedule, colors or timing changed, copying the new config.json is enough
 (also copy fonts/ if you changed a font or size, and images/ if photos changed).
-
+${S.schedule.source === "url" ? `
+Schedule from a web address: the PyPortal reads
+  ${S.schedule.url}
+every ${S.schedule.refreshMinutes} minute${S.schedule.refreshMinutes === 1 ? "" : "s"}. Edit that file to change the schedule; no new export is needed.
+If a read fails, the serial console shows "Schedule update failed" and the reason.
+` : ""}
 Troubleshooting: connect to the PyPortal's serial console (Mu editor or
 https://code.circuitpython.org) to see messages such as "WiFi failed" or
 "OpenWeatherMap: Invalid API key".

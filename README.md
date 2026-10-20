@@ -11,7 +11,7 @@ Open `index.html` in any browser. It's a single file with no install and no serv
 | Tab | What it does |
 | --- | --- |
 | Layout | Drag items on the screen; set font (12 choices), size, bold, color and alignment; background color or image; backlight. |
-| Schedule | Weekly entries, one line each: days, time, text, e.g. `MTWT 6:40am In DRL until 1:40pm`. Entries can be **At** a time, **From … to …**, or **All day**. Spans and all-day entries are highlighted while they're happening. Also sets the schedule's text and background colors. |
+| Schedule | Type the schedule in, or have the PyPortal read it from a web address (see below). Typed entries are weekly, one line each: days, time, text, e.g. `MTWT 6:40am In DRL until 1:40pm`. Entries can be **At** a time, **From … to …**, or **All day**. Spans and all-day entries are highlighted while they're happening. Also sets the schedule's text and background colors. |
 | Gallery | Turn the slideshow on or off, set how long the schedule screen shows before it, upload photos (resized to 320×240) and set seconds per photo, optional clock over the photos. |
 | Clock & weather | Weather refresh rate, 12/24-hour time, weather colors, zip code and units. |
 | Export | Optional WiFi and OpenWeatherMap key (written only into the zip), drive-space estimate, **Export .zip**. |
@@ -29,6 +29,14 @@ Open `index.html` in any browser. It's a single file with no install and no serv
 
 The clock is set from the weather request using the zip code's time zone, so it's correct once WiFi connects. After a design change, copying the new `config.json` is enough unless fonts or photos changed.
 
+## Schedule from a web address
+
+In the Schedule tab, choose **Read it from a web address** and give the address of a plain-text file, such as a file in a GitHub repo opened with **Raw** (`https://raw.githubusercontent.com/...`). The PyPortal reads it at start-up and then every few minutes (you choose how often), so you change the schedule by editing that file, with no new export.
+
+Each line of text is one line on the screen. Split a line into the same columns as typed entries with `|` or a tab, e.g. `MTWT | 6:40am | In DRL until 1:40pm`. Two parts put the first under the days and times; one part runs across the whole width. Start a line with `!` to show it in the happening-now color, or `#` to leave it out. See `examples/schedule.txt`.
+
+The device reads up to 4 KB. Until its first read it shows "Loading schedule...", and if a later read fails it keeps the last schedule it got and prints `Schedule update failed` on the serial console. Characters the fonts don't have (anything beyond plain ASCII and °) are left out; curly quotes and dashes become plain ones. The designer can't fetch most addresses itself, because the browser blocks it, so paste the file's text into the preview box to see it on the preview screen. The weather key is optional: without it the schedule still loads, but the clock isn't set.
+
 ## Repository layout
 
 ```
@@ -36,7 +44,7 @@ index.html          the designer, built from the two files below
 src/designer.html   designer source (HTML, CSS, JS)
 device/code.py      CircuitPython program included in every export
 build.py            rebuilds index.html: python3 build.py
-examples/           an export of the example design
+examples/           an export of the example design, and a sample schedule.txt
 ```
 
 Edit `src/designer.html` or `device/code.py`, then run `python3 build.py`. The designer's schedule and text-placement logic mirrors `code.py` (`schedule_lines`, `make_label`), so change both together.
